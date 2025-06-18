@@ -10,8 +10,8 @@
 // @grant        GM.addStyle
 // @grant        GM_registerMenuCommand
 // @run-at       document-start
-// @updateURL    https://raw.githubusercontent.com/zhotheone/jobscripts/main/order-logger.js
-// @downloadURL  https://raw.githubusercontent.com/zhotheone/jobscripts/main/order-logger.js
+// @updateURL    https://raw.githubusercontent.com/zhotheone/jobscripts/main/order-logger.user.js
+// @downloadURL  https://raw.githubusercontent.com/zhotheone/jobscripts/main/order-logger.user.js
 // ==/UserScript==
 
 (async function() {

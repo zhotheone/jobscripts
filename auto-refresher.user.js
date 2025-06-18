@@ -12,8 +12,8 @@
 // @grant        GM_addStyle
 // @grant        GM_registerMenuCommand
 // @run-at       document-idle
-// @updateURL    https://raw.githubusercontent.com/zhotheone/jobscripts/main/auto-refresher.js
-// @downloadURL  https://raw.githubusercontent.com/zhotheone/jobscripts/main/auto-refresher.js
+// @updateURL    https://raw.githubusercontent.com/zhotheone/jobscripts/main/auto-refresher.user.js
+// @downloadURL  https://raw.githubusercontent.com/zhotheone/jobscripts/main/auto-refresher.user.js
 // ==/UserScript==
 
 (function() {

@@ -9,8 +9,8 @@
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @grant        GM_registerMenuCommand
-// @updateURL    https://raw.githubusercontent.com/zhotheone/jobscripts/main/calculator.js
-// @downloadURL  https://raw.githubusercontent.com/zhotheone/jobscripts/main/calculator.js
+// @updateURL    https://raw.githubusercontent.com/zhotheone/jobscripts/main/calculator.user.js
+// @downloadURL  https://raw.githubusercontent.com/zhotheone/jobscripts/main/calculator.user.js
 // ==/UserScript==
 
 (function() {

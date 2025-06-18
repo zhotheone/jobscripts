@@ -13,8 +13,8 @@
 // @grant        GM_getValue
 // @grant        GM_addStyle
 // @run-at       document-idle
-// @updateURL    https://raw.githubusercontent.com/zhotheone/jobscripts/main/quick-order-opener.js
-// @downloadURL  https://raw.githubusercontent.com/zhotheone/jobscripts/main/quick-order-opener.js
+// @updateURL    https://raw.githubusercontent.com/zhotheone/jobscripts/main/quick-order-opener.user.js
+// @downloadURL  https://raw.githubusercontent.com/zhotheone/jobscripts/main/quick-order-opener.user.js
 // ==/UserScript==
 
 (function() {
