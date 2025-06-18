@@ -6,8 +6,8 @@
 // @author       Assistant
 // @match        https://essaycock.com/*
 // @grant        none
-// @updateURL    https://raw.githubusercontent.com/zhotheone/jobscripts/main/auto-refresher.user.js
-// @downloadURL  https://raw.githubusercontent.com/zhotheone/jobscripts/main/auto-refresher.user.js
+// @updateURL    https://raw.githubusercontent.com/zhotheone/jobscripts/main/quick-action-panel.user.js
+// @downloadURL  https://raw.githubusercontent.com/zhotheone/jobscripts/main/quick-action-panel.user.js
 // ==/UserScript==
 
 (function() {

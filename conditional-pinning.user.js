@@ -8,8 +8,8 @@
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @grant        GM_addStyle
-// @updateURL    https://raw.githubusercontent.com/zhotheone/jobscripts/main/auto-refresher.user.js
-// @downloadURL  https://raw.githubusercontent.com/zhotheone/jobscripts/main/auto-refresher.user.js
+// @updateURL    https://raw.githubusercontent.com/zhotheone/jobscripts/main/pinning.user.js
+// @downloadURL  https://raw.githubusercontent.com/zhotheone/jobscripts/main/pinning.user.js
 // ==/UserScript==
 
 (function () {
