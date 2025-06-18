@@ -1,12 +1,13 @@
 // ==UserScript==
 // @name         Quick Action Panel
-// @namespace    http://tampermonkey.net/
+// @namespace    https://github.com/zhotheone/jobscripts
 // @version      1.0
 // @description  Quick action panel with customizable hotkeys for essay service dashboard
 // @author       Assistant
 // @match        https://essaycock.com/*
-// @match        https://speedypaper.com/*
 // @grant        none
+// @updateURL    https://raw.githubusercontent.com/zhotheone/jobscripts/main/auto-refresher.user.js
+// @downloadURL  https://raw.githubusercontent.com/zhotheone/jobscripts/main/auto-refresher.user.js
 // ==/UserScript==
 
 (function() {

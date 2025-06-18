@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Conditional Element Pinning
-// @namespace    https://yourdomain.com
+// @namespace    https://github.com/zhotheone/jobscripts
 // @version      1.0
 // @description  Pin important page elements (reminders, notes) when scrolling past trigger point
 // @author       You
@@ -8,6 +8,8 @@
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @grant        GM_addStyle
+// @updateURL    https://raw.githubusercontent.com/zhotheone/jobscripts/main/auto-refresher.user.js
+// @downloadURL  https://raw.githubusercontent.com/zhotheone/jobscripts/main/auto-refresher.user.js
 // ==/UserScript==
 
 (function () {
