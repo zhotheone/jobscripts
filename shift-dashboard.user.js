@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         Speedy Company Shift Dashboard
+// @name         Shift Dashboard
 // @namespace    https://github.com/zhotheone/jobscripts
 // @version      1.0
 // @description  A better way to handle schedule.
