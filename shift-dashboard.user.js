@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Shift Dashboard
 // @namespace    https://github.com/zhotheone/jobscripts
-// @version      1.0
-// @description  A better way to handle schedule.
+// @version      1.1
+// @description  A better way to handle schedule. Fetches current and next month's data.
 // @author       Heorhii Litovskyi (George)
 // @match        https://essaycock.com/support/dashboard/*
 // @resource     FIRA_CODE_CSS https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;700&display=swap
@@ -29,6 +29,7 @@
     let statusUpdateInterval = null;
     let dataHasBeenIntercepted = false;
     let isMac = navigator.userAgent.includes('Mac');
+    let displayedMonthState = { year: null, month: null };
 
     // --- DEFAULT SETTINGS ---
     const defaultSettings = {
@@ -91,6 +92,13 @@
         #salary-info .night-hours { color: var(--iris); }
         .sh-modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(19, 17, 28, 0.85); backdrop-filter: blur(5px); z-index: 10000; display: none; justify-content: center; align-items: center; font-family: var(--font-main); }
         .sh-modal-content { background: var(--base); color: var(--text); padding: 25px; border-radius: 12px; width: 95vw; max-width: 1800px; height: 90vh; display: flex; flex-direction: column; box-shadow: 0 10px 40px rgba(0,0,0,0.5); border: 1px solid var(--border-color); }
+        .sh-modal-header { display: flex; align-items: center; margin-bottom: 15px; }
+        .sh-modal-header h2 { flex-grow: 1; text-align: center; margin: 0 10px; color: var(--foam); font-size: 20px; }
+        .sh-modal-close { font-size: 28px; font-weight: bold; color: var(--muted); cursor: pointer; transition: color 0.2s; line-height: 1; }
+        .sh-modal-close:hover { color: var(--text); }
+        .sh-modal-nav { background: none; border: 1px solid var(--muted); color: var(--muted); border-radius: 6px; padding: 4px 8px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s; }
+        .sh-modal-nav:hover:not(:disabled) { background-color: var(--highlight-high); color: var(--text); border-color: var(--text); }
+        .sh-modal-nav:disabled { opacity: 0.3; cursor: not-allowed; }
         .scsd-dialog-modal { background: var(--surface); border: 1px solid var(--border-color); padding: 20px 25px; border-radius: 12px; width: 90vw; max-width: 450px; box-shadow: 0 8px 30px rgba(0,0,0,0.4); }
         .scsd-dialog-modal h3 { margin: 0 0 15px; color: var(--foam); font-size: 18px; text-align: center; }
         .scsd-dialog-modal p { margin: 0 0 20px; color: var(--subtle); font-size: 14px; line-height: 1.6; }
@@ -140,7 +148,7 @@
     async function fetchAndCacheExchangeRate() { const settings = getSettings(); const sixHours = 6 * 60 * 60 * 1000; if (Date.now() - settings.usdToUahRate.timestamp < sixHours && settings.usdToUahRate.rate > 0) { return settings.usdToUahRate.rate; } try { const response = await fetch(NBU_API_URL); const data = await response.json(); if (data && data[0] && data[0].rate) { const newRate = data[0].rate; settings.usdToUahRate = { rate: newRate, timestamp: Date.now() }; saveSettings(settings); return newRate; } } catch (error) { console.error('Failed to fetch exchange rate:', error); } return settings.usdToUahRate.rate; }
     function calculateNightHours(start, end) { let nightHours = 0; const nightStartHour = 22; const nightEndHour = 6; let current = new Date(start); while (current < end) { const hour = current.getHours(); if (hour >= nightStartHour || hour < nightEndHour) { nightHours += 1/60; } current.setMinutes(current.getMinutes() + 1); } return nightHours; }
     async function getSupporterInfo(supporterName) { const settings = getSettings(); const cache = GM_getValue(CACHE_KEY); const modifier = isMac ? 'Cmd' : 'Ctrl'; const dashKey = settings.dashboardHotkey.replace(/^(Key|Digit)/, ''); const calKey = settings.calendarHotkey.replace(/^(Key|Digit)/, ''); const hotkeyHtml = `Dashboard: <b>${modifier}+${dashKey}</b> | Calendar: <b>${modifier}+${calKey}</b>`; if (!cache?.shifts) { return { statusHtml: '', salaryHtml: '', cemHtml: '', hotkeyHtml, personShifts: [], settings }; } const todayKey = new Date().toISOString().split('T')[0]; const todayShifts = cache.shifts.filter(s => s.starts_at && s.starts_at.startsWith(todayKey)); const cemNames = [...new Set(todayShifts.filter(s => s.title?.includes('(CEM')).map(s => (s.title.match(/(.+?)\s+\(/) || [])[1]?.trim()))].filter(Boolean); const cemHtml = cemNames.length > 0 ? `CEM: ${cemNames.join(', ')}` : ''; if (!supporterName) { return { statusHtml: '', salaryHtml: '', cemHtml, hotkeyHtml, personShifts: [], settings }; } const personShifts = cache.shifts.filter(s => s.title?.startsWith(supporterName + ' (')).sort((a, b) => new Date(a.starts_at + 'Z') - new Date(b.starts_at + 'Z')); const now = new Date(); let currentShift = null, nextShift = null; for (const shift of personShifts) { const start = new Date(shift.starts_at + 'Z'); const end = new Date(shift.ends_at + 'Z'); if (now >= start && now <= end) { currentShift = { ...shift, start, end }; } else if (now < start && !nextShift) { nextShift = { ...shift, start, end }; } } let statusHtml = ''; if (currentShift) { const position = (currentShift.title.match(/\((.*?)\)/) || [])[1] || ''; statusHtml = `<b>${supporterName}</b> (${position}) is <span class="time-highlight">ON SHIFT</span>. Ends in: ${formatDuration(currentShift.end - now)}.`; } else if (nextShift) { statusHtml = `<b>${supporterName}</b> is off shift. Next in: <span class="time-highlight">${formatDuration(nextShift.start - now)}</span>.`; } else { statusHtml = `<b>${supporterName}</b> has no more upcoming shifts.`; } let salaryHtml = ''; let totalHours = 0; let totalNightHours = 0; if (settings.hourlyRateUSD > 0) { let totalSalaryUSD = 0; personShifts.forEach(shift => { const start = new Date(shift.starts_at + 'Z'); const end = new Date(shift.ends_at + 'Z'); const roleMultiplier = getRoleMultiplier(shift.title, settings); const nightHoursInShift = calculateNightHours(start, end); const dayHoursInShift = ((end - start) / 3600000) - nightHoursInShift; totalNightHours += nightHoursInShift; totalHours += dayHoursInShift + nightHoursInShift; const dayPay = dayHoursInShift * settings.hourlyRateUSD * roleMultiplier; const nightPay = nightHoursInShift * settings.hourlyRateUSD * roleMultiplier * settings.nightRateMultiplier; totalSalaryUSD += dayPay + nightPay; }); const exchangeRate = await fetchAndCacheExchangeRate(); const totalSalaryUAH = totalSalaryUSD * exchangeRate; salaryHtml = `Total: <b>$${totalSalaryUSD.toFixed(2)}</b> (~${totalSalaryUAH.toLocaleString('uk-UA', {style:'currency', currency:'UAH'})})`; } return { statusHtml, salaryHtml, cemHtml, hotkeyHtml, personShifts, settings, totalHours, totalNightHours }; }
-    async function updateInfoPanels() { const supporterName = document.getElementById('support-selector')?.value || GM_getValue('selectedSupporterName', ''); const { statusHtml, salaryHtml, cemHtml, hotkeyHtml, personShifts, settings, totalHours, totalNightHours } = await getSupporterInfo(supporterName); const liveStatusLabel = document.getElementById('live-status-label'); if (liveStatusLabel) { liveStatusLabel.innerHTML = statusHtml || 'Select a supporter to see their live status.'; } const salaryInfoDiv = document.getElementById('salary-info'); if (salaryInfoDiv) { if (salaryHtml && personShifts.length > 0) { salaryInfoDiv.innerHTML = `Monthly total for <b>${supporterName}</b>:<br>Total Hours: <b>${totalHours.toFixed(2)}</b><br>Regular Hours: ${(totalHours - totalNightHours).toFixed(2)}<br><span class="night-hours">Night Hours: ${totalNightHours.toFixed(2)} (x${settings.nightRateMultiplier})</span><br><small>(Role rates applied as per settings)</small><br>${salaryHtml.replace('Total:', 'Salary:')}`; salaryInfoDiv.style.display = 'block'; } else { salaryInfoDiv.style.display = 'none'; } } const navInjection = document.getElementById('scsd-navbar-injection'); if (navInjection) { let finalNavHtml = `<span class="nav-hotkey-text">${hotkeyHtml}</span>`; if (statusHtml) { finalNavHtml += `<span class="separator"></span><span class="nav-status-text">${statusHtml}</span>`; } if (salaryHtml) { finalNavHtml += `<span class="separator"></span><span class="nav-salary-text">${salaryHtml}</span>`; } if (cemHtml) { finalNavHtml += `<span class="separator"></span><span class="nav-cem-text">${cemHtml}</span>`; } navInjection.innerHTML = finalNavHtml; } }
+    async function updateInfoPanels() { const supporterName = document.getElementById('support-selector')?.value || GM_getValue('selectedSupporterName', ''); const { statusHtml, salaryHtml, cemHtml, hotkeyHtml, personShifts, settings, totalHours, totalNightHours } = await getSupporterInfo(supporterName); const liveStatusLabel = document.getElementById('live-status-label'); if (liveStatusLabel) { liveStatusLabel.innerHTML = statusHtml || 'Select a supporter to see their live status.'; } const salaryInfoDiv = document.getElementById('salary-info'); if (salaryInfoDiv) { if (salaryHtml && personShifts.length > 0) { salaryInfoDiv.innerHTML = `Total for <b>${supporterName}</b> (Current & Next Month):<br>Total Hours: <b>${totalHours.toFixed(2)}</b><br>Regular Hours: ${(totalHours - totalNightHours).toFixed(2)}<br><span class="night-hours">Night Hours: ${totalNightHours.toFixed(2)} (x${settings.nightRateMultiplier})</span><br><small>(Role rates applied as per settings)</small><br>${salaryHtml.replace('Total:', 'Salary:')}`; salaryInfoDiv.style.display = 'block'; } else { salaryInfoDiv.style.display = 'none'; } } const navInjection = document.getElementById('scsd-navbar-injection'); if (navInjection) { let finalNavHtml = `<span class="nav-hotkey-text">${hotkeyHtml}</span>`; if (statusHtml) { finalNavHtml += `<span class="separator"></span><span class="nav-status-text">${statusHtml}</span>`; } if (salaryHtml) { finalNavHtml += `<span class="separator"></span><span class="nav-salary-text">${salaryHtml}</span>`; } if (cemHtml) { finalNavHtml += `<span class="separator"></span><span class="nav-cem-text">${cemHtml}</span>`; } navInjection.innerHTML = finalNavHtml; } }
 
     // --- CALENDAR EXPORT FUNCTIONS ---
     function formatICSDate(date) { return date.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, ''); }
@@ -221,12 +229,69 @@
     }
 
     // --- BUILD & RENDER FUNCTIONS ---
-    function buildScheduleView() { const container = document.getElementById('sh-schedule-container'); const titleEl = document.getElementById('sh-calendar-title'); const cache = GM_getValue(CACHE_KEY); if (!cache?.shifts?.length) { container.innerHTML = '<p>No shift data in cache.</p>'; return; } const settings = getSettings(); const selectedSupporter = document.getElementById('support-selector').value; const shiftsByDay = cache.shifts.reduce((acc, shift) => { if (!shift.starts_at) return acc; const dayKey = new Date(shift.starts_at + 'Z').toISOString().split('T')[0]; if (!acc[dayKey]) acc[dayKey] = []; acc[dayKey].push(shift); return acc; }, {}); const now = new Date(), year = now.getFullYear(), month = now.getMonth(); if(titleEl) titleEl.textContent = new Date(year, month).toLocaleString('en-US', { month: 'long', year: 'numeric' }); const firstDayOfMonth = new Date(year, month, 1); const daysInMonth = new Date(year, month + 1, 0).getDate(); const startingDayOfWeek = (firstDayOfMonth.getDay() + 6) % 7; let cells = []; cells.push(...['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => `<div class="calendar-weekday-header">${day}</div>`)); for (let i = 0; i < startingDayOfWeek; i++) { cells.push('<div class="sh-day-cell empty"></div>'); } for (let d = 1; d <= daysInMonth; d++) { const dayKey = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`; const dayShifts = shiftsByDay[dayKey] || []; const isToday = d === now.getDate() && month === now.getMonth() && year === now.getFullYear(); const cemNames = [...new Set(dayShifts.filter(s => s.title?.includes('(CEM')).map(s => (s.title.match(/(.+?)\s+\(/) || [])[1]?.trim()))].filter(Boolean); const cemDisplay = cemNames.length > 0 ? ` <span class="day-cem-name">(CEM: ${cemNames.join(', ')})</span>` : ''; let dayHtml = `<div class="sh-day-cell ${isToday ? 'today' : ''}" id="day-cell-${d}"><div class="day-cell-header"><div class="sh-day-number">${d}${cemDisplay}</div></div><div class="day-shifts-wrapper">`; if (dayShifts.length > 0) { const shiftsByTimeRange = dayShifts.reduce((acc, shift) => { const key = shift.starts_at + '|' + shift.ends_at; if (!acc[key]) acc[key] = []; acc[key].push(shift); return acc; }, {}); const sortedGroups = Object.values(shiftsByTimeRange).sort((a, b) => new Date(a[0].starts_at + 'Z') - new Date(b[0].starts_at + 'Z')); for (const group of sortedGroups) { const firstShift = group[0]; const start = new Date(firstShift.starts_at + 'Z'); const supervisors = []; const startTime = start.toLocaleTimeString('en-GB', { timeZone: 'Europe/Kyiv', hour: '2-digit', minute: '2-digit', hour12: false }); const personCounts = new Map(); for (const shift of group) { const personName = (shift.title || 'Unassigned').replace(/\s\(.*\)/, ''); if (personCounts.has(personName)) { personCounts.get(personName).count++; } else { personCounts.set(personName, { count: 1, shiftData: shift }); } } let avatarsHtml = ''; for (const { count, shiftData } of personCounts.values()) { const personName = (shiftData.title || 'Unassigned').replace(/\s\(.*\)/, ''); const isHighlighted = settings.highlightSupport && selectedSupporter === personName; avatarsHtml += renderShiftAvatar(shiftData, count, isHighlighted); } dayHtml += `<div class="calendar-shift-card"><div class="shift-card-header"><div class="shift-card-time">${startTime}</div><div class="shift-card-type">${getShiftType(start)}</div></div><div class="person-avatar-list">${avatarsHtml}</div></div>`; } } dayHtml += `</div></div>`; cells.push(dayHtml); } container.innerHTML = `<div class="sh-calendar-grid">${cells.join('')}</div>`; const todayCell = document.getElementById(`day-cell-${now.getDate()}`); if(todayCell) todayCell.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+    function buildScheduleView(year, month) {
+        displayedMonthState = { year, month };
+        const container = document.getElementById('sh-schedule-container');
+        const titleEl = document.getElementById('sh-calendar-title');
+        const cache = GM_getValue(CACHE_KEY);
+        if (!cache?.shifts?.length) { container.innerHTML = '<p>No shift data in cache.</p>'; return; }
+        const settings = getSettings();
+        const selectedSupporter = document.getElementById('support-selector').value;
+        const shiftsByDay = cache.shifts.reduce((acc, shift) => { if (!shift.starts_at) return acc; const dayKey = new Date(shift.starts_at + 'Z').toISOString().split('T')[0]; if (!acc[dayKey]) acc[dayKey] = []; acc[dayKey].push(shift); return acc; }, {});
+        const now = new Date();
+        if(titleEl) titleEl.textContent = new Date(year, month).toLocaleString('en-US', { month: 'long', year: 'numeric' });
+        const firstDayOfMonth = new Date(year, month, 1);
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+        const startingDayOfWeek = (firstDayOfMonth.getDay() + 6) % 7;
+        let cells = [];
+        cells.push(...['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => `<div class="calendar-weekday-header">${day}</div>`));
+        for (let i = 0; i < startingDayOfWeek; i++) { cells.push('<div class="sh-day-cell empty"></div>'); }
+        for (let d = 1; d <= daysInMonth; d++) {
+            const dayKey = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+            const dayShifts = shiftsByDay[dayKey] || [];
+            const isToday = d === now.getDate() && month === now.getMonth() && year === now.getFullYear();
+            const cemNames = [...new Set(dayShifts.filter(s => s.title?.includes('(CEM')).map(s => (s.title.match(/(.+?)\s+\(/) || [])[1]?.trim()))].filter(Boolean);
+            const cemDisplay = cemNames.length > 0 ? ` <span class="day-cem-name">(CEM: ${cemNames.join(', ')})</span>` : '';
+            let dayHtml = `<div class="sh-day-cell ${isToday ? 'today' : ''}" id="day-cell-${d}"><div class="day-cell-header"><div class="sh-day-number">${d}${cemDisplay}</div></div><div class="day-shifts-wrapper">`;
+            if (dayShifts.length > 0) {
+                const shiftsByTimeRange = dayShifts.reduce((acc, shift) => { const key = shift.starts_at + '|' + shift.ends_at; if (!acc[key]) acc[key] = []; acc[key].push(shift); return acc; }, {});
+                const sortedGroups = Object.values(shiftsByTimeRange).sort((a, b) => new Date(a[0].starts_at + 'Z') - new Date(b[0].starts_at + 'Z'));
+                for (const group of sortedGroups) {
+                    const firstShift = group[0];
+                    const start = new Date(firstShift.starts_at + 'Z');
+                    const supervisors = [];
+                    const startTime = start.toLocaleTimeString('en-GB', { timeZone: 'Europe/Kyiv', hour: '2-digit', minute: '2-digit', hour12: false });
+                    const personCounts = new Map();
+                    for (const shift of group) { const personName = (shift.title || 'Unassigned').replace(/\s\(.*\)/, ''); if (personCounts.has(personName)) { personCounts.get(personName).count++; } else { personCounts.set(personName, { count: 1, shiftData: shift }); } }
+                    let avatarsHtml = '';
+                    for (const { count, shiftData } of personCounts.values()) { const personName = (shiftData.title || 'Unassigned').replace(/\s\(.*\)/, ''); const isHighlighted = settings.highlightSupport && selectedSupporter === personName; avatarsHtml += renderShiftAvatar(shiftData, count, isHighlighted); }
+                    dayHtml += `<div class="calendar-shift-card"><div class="shift-card-header"><div class="shift-card-time">${startTime}</div><div class="shift-card-type">${getShiftType(start)}</div></div><div class="person-avatar-list">${avatarsHtml}</div></div>`;
+                }
+            }
+            dayHtml += `</div></div>`;
+            cells.push(dayHtml);
+        }
+        container.innerHTML = `<div class="sh-calendar-grid">${cells.join('')}</div>`;
+        if (month === now.getMonth() && year === now.getFullYear()) {
+            const todayCell = document.getElementById(`day-cell-${now.getDate()}`);
+            if(todayCell) todayCell.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+
+        // Navigation button logic
+        const today = new Date();
+        const currentMonth = today.getMonth();
+        const currentYear = today.getFullYear();
+        const nextMonth = (currentMonth + 1) % 12;
+        const nextMonthYear = currentMonth === 11 ? currentYear + 1 : currentYear;
+
+        document.getElementById('scsd-prev-month').disabled = (year === currentYear && month === currentMonth);
+        document.getElementById('scsd-next-month').disabled = (year === nextMonthYear && month === nextMonth);
+    }
     function createUI() {
         if (document.getElementById('shift-helper-panel')) return;
         document.body.insertAdjacentHTML('beforeend', `
             <div id="shift-helper-panel"><div id="shp-header"><h3>Shift Dashboard</h3><div class="shp-header-actions"><button id="shp-settings-btn" title="Settings">⚙️</button><span id="shp-status-light" title="Status"></span></div></div><div id="shp-info">Initializing...</div><div id="shp-settings"><div class="setting-item"><label for="hourly-rate-input">Hourly Rate ($)</label><input type="number" id="hourly-rate-input" step="0.1" min="0"></div><div class="setting-item"><label for="night-rate-input">Night Rate (x)</label><input type="number" id="night-rate-input" step="0.1" min="1"></div><div class="setting-item"><label for="oc-rate-input">OC Rate (x)</label><input type="number" id="oc-rate-input" step="0.1" min="1"></div><div class="setting-item"><label for="as-rate-input">AS Rate (x)</label><input type="number" id="as-rate-input" step="0.1" min="1"></div><div class="setting-item"><label for="sup-rate-input">Sup Rate (x)</label><input type="number" id="sup-rate-input" step="0.1" min="1"></div><div class="setting-item"><label for="dash-hotkey-input">Dashboard Hotkey</label><input type="text" id="dash-hotkey-input"></div><div class="setting-item"><label for="cal-hotkey-input">Calendar Hotkey</label><input type="text" id="cal-hotkey-input"></div><div class="setting-item"><label for="highlight-support-checkbox">Highlight support</label><input type="checkbox" id="highlight-support-checkbox"></div></div><div id="shp-actions"><button id="show-schedule-btn" disabled>View Calendar</button><button id="export-calendar-btn" title="Export shifts to a calendar file" disabled>Export</button><button id="delete-cache-btn" title="Delete shift data">🗑️</button></div><div id="support-status-panel"><select id="support-selector"></select><div id="color-settings-panel"><h4>Customize Colors</h4><div id="color-pickers"><div class="color-picker-item"><label for="bg-color-picker">BG</label><input type="color" id="bg-color-picker"></div><div class="color-picker-item"><label for="text-color-picker">Text</label><input type="color" id="text-color-picker"></div></div></div><div id="live-status-label"></div><div id="salary-info"></div></div></div>
-            <div class="sh-modal-overlay" id="sh-calendar-modal"><div class="sh-modal-content"><div class="sh-modal-header"><h2 id="sh-calendar-title"></h2><span class="sh-modal-close">×</span></div><div id="sh-schedule-container"></div></div></div>
+            <div class="sh-modal-overlay" id="sh-calendar-modal"><div class="sh-modal-content"><div class="sh-modal-header"><button id="scsd-prev-month" class="sh-modal-nav" title="Previous Month">◄</button><h2 id="sh-calendar-title"></h2><button id="scsd-next-month" class="sh-modal-nav" title="Next Month">►</button><span class="sh-modal-close">×</span></div><div id="sh-schedule-container"></div></div></div>
             <div class="sh-modal-overlay" id="scsd-export-options-modal"><div class="scsd-dialog-modal"><h3>Export Calendar Options</h3><p>Choose which shifts to export. Personal options require a supporter to be selected from the main panel.</p><div class="dialog-actions"><button id="export-contextual-btn" class="primary">My Team's Shifts</button><button id="export-mine-btn" class="secondary">My Shifts Only</button><button id="export-all-btn" class="secondary">All Company Shifts</button><button id="export-cancel-btn" class="cancel">Cancel</button></div></div></div>
             <div class="sh-modal-overlay" id="scsd-import-instructions-modal"><div class="scsd-dialog-modal"><h3>Export Successful!</h3><p>Your calendar file (<code>.ics</code>) has been downloaded. To add it to Google Calendar:</p><ol><li>Open Google Calendar in your browser.</li><li>Click the <strong>Settings gear ⚙️</strong> icon, then <strong>Settings</strong>.</li><li>In the left menu, click <strong>Import & Export</strong>.</li><li>Under "Import", click <strong>Select file from your computer</strong> and choose the downloaded <code>.ics</code> file.</li><li>Select the calendar you want to add the shifts to, then click <strong>Import</strong>.</li></ol><div class="dialog-actions"><button id="instructions-ok-btn" class="primary">OK</button></div></div></div>
         `);
@@ -238,30 +303,88 @@
         document.getElementById('shp-settings-btn').addEventListener('click', () => { const panel = document.getElementById('shp-settings'); panel.style.display = panel.style.display === 'flex' ? 'none' : 'flex'; });
         const inputToSettingMap = { 'hourly-rate-input': 'hourlyRateUSD', 'night-rate-input': 'nightRateMultiplier', 'oc-rate-input': 'ocRateMultiplier', 'as-rate-input': 'asRateMultiplier', 'sup-rate-input': 'supRateMultiplier', };
         Object.values(inputToSettingMap).forEach(key => document.getElementById(Object.keys(inputToSettingMap).find(k => inputToSettingMap[k] === key)).addEventListener('input', (e) => { const currentSettings = getSettings(); const val = parseFloat(e.target.value); currentSettings[key] = isNaN(val) ? (key === 'hourlyRateUSD' ? 0 : 1.0) : val; saveSettings(currentSettings); updateInfoPanels(); }));
-        highlightCheck.addEventListener('change', () => { const currentSettings = getSettings(); currentSettings.highlightSupport = highlightCheck.checked; saveSettings(currentSettings); if (document.getElementById('sh-calendar-modal').style.display === 'flex') { buildScheduleView(); } });
-        document.getElementById('show-schedule-btn').addEventListener('click', () => { document.getElementById('sh-calendar-modal').style.display = 'flex'; buildScheduleView(); });
+        highlightCheck.addEventListener('change', () => { const currentSettings = getSettings(); currentSettings.highlightSupport = highlightCheck.checked; saveSettings(currentSettings); if (document.getElementById('sh-calendar-modal').style.display === 'flex') { buildScheduleView(displayedMonthState.year, displayedMonthState.month); } });
+        document.getElementById('show-schedule-btn').addEventListener('click', () => { document.getElementById('sh-calendar-modal').style.display = 'flex'; const now = new Date(); buildScheduleView(now.getFullYear(), now.getMonth()); });
         document.getElementById('export-calendar-btn').addEventListener('click', initiateExportProcess);
         document.getElementById('delete-cache-btn').addEventListener('click', () => { if (confirm("Clear shift data cache? Your settings will be preserved.")) { GM_deleteValue(CACHE_KEY); location.reload(); } });
         document.getElementById('sh-calendar-modal').querySelector('.sh-modal-close').addEventListener('click', () => document.getElementById('sh-calendar-modal').style.display = 'none');
+        document.getElementById('scsd-prev-month').addEventListener('click', () => { let { year, month } = displayedMonthState; month--; if (month < 0) { month = 11; year--; } buildScheduleView(year, month); });
+        document.getElementById('scsd-next-month').addEventListener('click', () => { let { year, month } = displayedMonthState; month++; if (month > 11) { month = 0; year++; } buildScheduleView(year, month); });
         document.getElementById('scsd-export-options-modal').querySelector('#export-cancel-btn').addEventListener('click', () => document.getElementById('scsd-export-options-modal').style.display = 'none');
         document.getElementById('scsd-import-instructions-modal').querySelector('#instructions-ok-btn').addEventListener('click', () => document.getElementById('scsd-import-instructions-modal').style.display = 'none');
         document.getElementById('export-mine-btn').addEventListener('click', () => handleCalendarExport('mine'));
         document.getElementById('export-contextual-btn').addEventListener('click', () => handleCalendarExport('contextual'));
         document.getElementById('export-all-btn').addEventListener('click', () => handleCalendarExport('all'));
-        document.addEventListener('keydown', (e) => { const settings = getSettings(); if ((e.ctrlKey || e.metaKey) && !/INPUT|TEXTAREA/.test(e.target.nodeName)) { if(e.code === settings.dashboardHotkey) { e.preventDefault(); const panel = document.getElementById('shift-helper-panel'); panel.style.display = panel.style.display === 'flex' ? 'none' : 'flex'; } if(e.code === settings.calendarHotkey) { e.preventDefault(); const modal = document.getElementById('sh-calendar-modal'); modal.style.display = modal.style.display === 'flex' ? 'none' : 'flex'; if(modal.style.display === 'flex') buildScheduleView(); } }});
+        document.addEventListener('keydown', (e) => { const settings = getSettings(); if ((e.ctrlKey || e.metaKey) && !/INPUT|TEXTAREA/.test(e.target.nodeName)) { if(e.code === settings.dashboardHotkey) { e.preventDefault(); const panel = document.getElementById('shift-helper-panel'); panel.style.display = panel.style.display === 'flex' ? 'none' : 'flex'; } if(e.code === settings.calendarHotkey) { e.preventDefault(); const modal = document.getElementById('sh-calendar-modal'); const isOpening = modal.style.display !== 'flex'; modal.style.display = isOpening ? 'flex' : 'none'; if(isOpening) { const now = new Date(); buildScheduleView(now.getFullYear(), now.getMonth()); } } }});
         const bgColorPicker = document.getElementById('bg-color-picker'); const textColorPicker = document.getElementById('text-color-picker');
         bgColorPicker.addEventListener('input', () => { updateColorSetting('bg', bgColorPicker.value); }); textColorPicker.addEventListener('input', () => { updateColorSetting('text', textColorPicker.value); });
-        document.getElementById('support-selector').addEventListener('change', (e) => { GM_setValue('selectedSupporterName', e.target.value); if (statusUpdateInterval) clearInterval(statusUpdateInterval); updateInfoPanels(); if(e.target.value) statusUpdateInterval = setInterval(updateInfoPanels, 1000); if (getSettings().highlightSupport && document.getElementById('sh-calendar-modal').style.display === 'flex') { buildScheduleView(); } updateColorPanel(); });
+        document.getElementById('support-selector').addEventListener('change', (e) => { GM_setValue('selectedSupporterName', e.target.value); if (statusUpdateInterval) clearInterval(statusUpdateInterval); updateInfoPanels(); if(e.target.value) statusUpdateInterval = setInterval(updateInfoPanels, 1000); if (getSettings().highlightSupport && document.getElementById('sh-calendar-modal').style.display === 'flex') { buildScheduleView(displayedMonthState.year, displayedMonthState.month); } updateColorPanel(); });
         const injectionInterval = setInterval(() => { const targetSpan = document.querySelector('span[style*="font-size: 25px"]'); if (targetSpan) { clearInterval(injectionInterval); const parentLi = targetSpan.closest('li'); if (parentLi && !document.getElementById('scsd-navbar-injection')) { const navInjectionLi = document.createElement('li'); navInjectionLi.id = 'scsd-navbar-injection'; parentLi.parentNode.insertBefore(navInjectionLi, parentLi); updateInfoPanels(); } } }, 500);
         setTimeout(() => clearInterval(injectionInterval), 10000); updatePanelUI('Waiting for data...', 'waiting');
     }
 
     function updateColorPanel() { const colorPanel = document.getElementById('color-settings-panel'); const supporterName = document.getElementById('support-selector').value; if (!supporterName) { colorPanel.style.display = 'none'; return; } const settings = getSettings(); const customColors = settings.colorSettings[supporterName] || {}; document.getElementById('bg-color-picker').value = customColors.bg || '#908caa'; document.getElementById('text-color-picker').value = customColors.text || '#232136'; colorPanel.style.display = 'block'; }
-    function updateColorSetting(type, value) { const supporterName = document.getElementById('support-selector').value; if (!supporterName) return; const settings = getSettings(); if (!settings.colorSettings[supporterName]) { settings.colorSettings[supporterName] = {}; } settings.colorSettings[supporterName][type] = value; saveSettings(settings); if (document.getElementById('sh-calendar-modal').style.display === 'flex') { buildScheduleView(); } }
-    function initialize() { createUI(); interceptXHR(); fetchAndCacheExchangeRate(); const initialCache = GM_getValue(CACHE_KEY); if (initialCache) { updatePanelUI('Using cached data.', 'ok'); } else { setTimeout(() => { if (!dataHasBeenIntercepted && !GM_getValue(CACHE_KEY)) { updatePanelUI('No shift data found on this page.', 'error'); } }, 15000); } }
-    function updatePanelUI(statusMessage = '', statusType = 'waiting') { const cache = GM_getValue(CACHE_KEY); const hasCache = cache?.shifts?.length > 0; const panel = document.getElementById('shift-helper-panel'); if (!panel) return; const infoDiv = panel.querySelector('#shp-info'); const light = panel.querySelector('#shp-status-light'); const viewBtn = panel.querySelector('#show-schedule-btn'); const deleteBtn = panel.querySelector('#delete-cache-btn'); const exportBtn = panel.querySelector('#export-calendar-btn'); const statusPanel = panel.querySelector('#support-status-panel'); light.className = 'shp-status-light'; light.classList.add(statusType); if (hasCache) { infoDiv.innerHTML = `Data for <b>${new Date(cache.timestamp).toLocaleString('default', {month: 'long'})}</b> loaded.`; [viewBtn, deleteBtn, exportBtn].forEach(btn => btn.disabled = false); buildSupportSelector(cache.shifts); } else { infoDiv.textContent = statusMessage || 'Waiting for shift data...'; [viewBtn, deleteBtn, exportBtn].forEach(btn => btn.disabled = true); if (statusPanel) statusPanel.style.display = 'none'; } }
+    function updateColorSetting(type, value) { const supporterName = document.getElementById('support-selector').value; if (!supporterName) return; const settings = getSettings(); if (!settings.colorSettings[supporterName]) { settings.colorSettings[supporterName] = {}; } settings.colorSettings[supporterName][type] = value; saveSettings(settings); if (document.getElementById('sh-calendar-modal').style.display === 'flex') { buildScheduleView(displayedMonthState.year, displayedMonthState.month); } }
+    function initialize() {
+        createUI();
+        interceptXHR();
+        fetchAndCacheExchangeRate();
+        const initialCache = GM_getValue(CACHE_KEY);
+        if (initialCache) {
+            const now = new Date();
+            const currentMonthName = now.toLocaleString('default', { month: 'long' });
+            const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+            const nextMonthName = nextMonth.toLocaleString('default', { month: 'long' });
+            updatePanelUI(`Using cached data for <b>${currentMonthName} & ${nextMonthName}</b>.`, 'ok');
+        } else {
+            setTimeout(() => { if (!dataHasBeenIntercepted && !GM_getValue(CACHE_KEY)) { updatePanelUI('No shift data found on this page.', 'error'); } }, 15000);
+        }
+    }
+    function updatePanelUI(statusMessage = '', statusType = 'waiting') {
+        const cache = GM_getValue(CACHE_KEY);
+        const hasCache = cache?.shifts?.length > 0;
+        const panel = document.getElementById('shift-helper-panel');
+        if (!panel) return;
+        const infoDiv = panel.querySelector('#shp-info');
+        const light = panel.querySelector('#shp-status-light');
+        const viewBtn = panel.querySelector('#show-schedule-btn');
+        const deleteBtn = panel.querySelector('#delete-cache-btn');
+        const exportBtn = panel.querySelector('#export-calendar-btn');
+        const statusPanel = panel.querySelector('#support-status-panel');
+        light.className = 'shp-status-light';
+        light.classList.add(statusType);
+        if (hasCache) {
+            infoDiv.innerHTML = statusMessage;
+            [viewBtn, deleteBtn, exportBtn].forEach(btn => btn.disabled = false);
+            buildSupportSelector(cache.shifts);
+        } else {
+            infoDiv.textContent = statusMessage || 'Waiting for shift data...';
+            [viewBtn, deleteBtn, exportBtn].forEach(btn => btn.disabled = true);
+            if (statusPanel) statusPanel.style.display = 'none';
+        }
+    }
     function buildSupportSelector(shifts) { const panel = document.getElementById('support-status-panel'); const selector = document.getElementById('support-selector'); if (!panel || !selector) return; const supporters = [...new Set(shifts.map(s => (s.title || '').match(/(.+?)\s+\(/)?.[1].trim()).filter(Boolean))].sort(); if (supporters.length > 0) { panel.style.display = 'block'; const currentSelection = selector.value; selector.innerHTML = '<option value="">-- Select Supporter --</option>' + supporters.map(name => `<option value="${name}">${name}</option>`).join(''); const savedName = GM_getValue('selectedSupporterName'); if (savedName && supporters.includes(savedName)) { selector.value = savedName; if (statusUpdateInterval) clearInterval(statusUpdateInterval); updateInfoPanels(); statusUpdateInterval = setInterval(updateInfoPanels, 1000); updateColorPanel(); } else { selector.value = currentSelection; updateInfoPanels(); updateColorPanel(); } } else { panel.style.display = 'none'; } }
-    function processAndCacheShifts(responseData) { dataHasBeenIntercepted = true; let allShifts = responseData?.data?.shifts; if (!allShifts || !Array.isArray(allShifts)) { updatePanelUI('Error: Unrecognized data format.', 'error'); return; } const now = new Date(); const startOfMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)); const endOfMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0, 23, 59, 59)); const filteredShifts = allShifts.filter(shift => { if (!shift.starts_at) return false; const shiftDate = new Date(shift.starts_at + 'Z'); return !isNaN(shiftDate.getTime()) && shiftDate >= startOfMonth && shiftDate <= endOfMonth; }); GM_setValue(CACHE_KEY, { timestamp: new Date().toISOString(), shifts: filteredShifts }); updatePanelUI(`Success! ${filteredShifts.length} shifts found for ${now.toLocaleString('default', { month: 'long' })}.`, 'ok'); }
+    function processAndCacheShifts(responseData) {
+        dataHasBeenIntercepted = true;
+        let allShifts = responseData?.data?.shifts;
+        if (!allShifts || !Array.isArray(allShifts)) {
+            updatePanelUI('Error: Unrecognized data format.', 'error');
+            return;
+        }
+        const now = new Date();
+        const startOfMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+        const endOfNextMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 2, 0, 23, 59, 59));
+        const filteredShifts = allShifts.filter(shift => {
+            if (!shift.starts_at) return false;
+            const shiftDate = new Date(shift.starts_at + 'Z');
+            return !isNaN(shiftDate.getTime()) && shiftDate >= startOfMonth && shiftDate <= endOfNextMonth;
+        });
+        GM_setValue(CACHE_KEY, { timestamp: new Date().toISOString(), shifts: filteredShifts });
+        const currentMonthName = now.toLocaleString('default', { month: 'long' });
+        const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+        const nextMonthName = nextMonth.toLocaleString('default', { month: 'long' });
+        updatePanelUI(`Success! ${filteredShifts.length} shifts for <b>${currentMonthName} & ${nextMonthName}</b>.`, 'ok');
+    }
     function interceptXHR() { const originalOpen = XMLHttpRequest.prototype.open; XMLHttpRequest.prototype.open = function(method, url) { this._url = url; originalOpen.apply(this, arguments); }; const originalSend = XMLHttpRequest.prototype.send; XMLHttpRequest.prototype.send = function() { if (this._url?.startsWith(SHIFT_API_URL)) { updatePanelUI('API request detected...', 'waiting'); this.addEventListener('load', () => { if (this.status >= 200 && this.status < 300) { try { processAndCacheShifts(JSON.parse(this.responseText)); } catch (e) { updatePanelUI('Error parsing shift data.', 'error'); } } else { updatePanelUI(`API Error: ${this.status}`, 'error'); } }); this.addEventListener('error', () => updatePanelUI('Network error on API call.', 'error')); } originalSend.apply(this, arguments); }; }
 
     if (document.readyState === 'loading') { window.addEventListener('DOMContentLoaded', initialize); }
